@@ -86,10 +86,8 @@ class Diff(object):
     def diff(self, path1, path2):
         # compare dir
         dircmp = filecmp.dircmp(path1, path2)
-        # missing file
+        # missing files
         missing_files = dircmp.left_only
-        # import pdb
-        # pdb.set_trace()
         for missing in missing_files:
             self.dumpfile(missing, path1)
         # new files
@@ -98,23 +96,18 @@ class Diff(object):
             self.dumpfile(new, path2, missing=False)
         files = dircmp.same_files
         for f in files:
-            # check md5sum
             if not self.md5cmp("%s/%s" % (path1, f),"%s/%s" % (path2, f)):
                 out = open("%s/%s.diff" % (self.wdir, f), 'w')
                 with open("%s/%s" % (path1, f), 'rb') as f1, open("%s/%s" % (path2, f), 'rb') as f2:
-                    # remove comment
+                    # @TODO remove comment
                     l1 = f1.readlines()
                     l2 = f2.readlines()
                     for line in l1:
                         if not line in l2:
                             out.write("-%s" % (line))
-                        # else:
-                        #     out.write("%s" % (line))
                     for line in l2:
                         if not line in l1:
                             out.write("+%s" % (line))
-                        # else:
-                        #     out.write("%s" % (line))
                 out.flush()
 
     def dumpfile(self, filename, path, missing=True):
