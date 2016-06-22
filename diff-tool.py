@@ -14,8 +14,7 @@ import tarfile
 import datetime
 import filecmp
 import hashlib
-
-tmp_dir = '/tmp/os-grab-config'
+import argparse
 
 def _exec_cmd(cmd):
     """ exec command without shell """
@@ -29,12 +28,16 @@ def _exec_shell_cmd(cmd):
                                 shell=True)
     return shell.wait()
 
+def _make_working_dir(working_dir):
+    if not os.path.exists(working_dir):
+        os.mkdir(working_dir)
+
 class Logger(object):
     """ Std logger"""
 
     _log_level = 'DEBUG'
 
-    def __init__(self, log_dir=tmp_dir):
+    def __init__(self, log_dir):
         self.log = open("%s/diff.log" % (log_dir), 'a+')
 
     def log(self, *args):
@@ -44,39 +47,35 @@ class Logger(object):
         self.log.write("%s\n" % line)
         self.log.flush()
 
-class Grab(object):
+class Grabber(object):
 
-    os_services = ['nova', 'neutron']
-
-    def _make_tmp(self):
-        if not os.path.exists(tmp_dir):
-            os.mkdir(tmp_dir)
+    def __init__(self, services, tmp_dir):
+        self.os_services = services
+        self.tmp_dir = tmp_dir
 
     def get_conf_files(self, os_service, config_dir='/etc'):
         for (dirpath, dirnames, files) in walk(config_dir):
             if os_service in dirpath:
                 for file in files:
-                    shutil.copy("%s/%s" % (dirpath, file), "%s/%s" % (tmp_dir, file))
+                    shutil.copy("%s/%s" % (dirpath, file), "%s/%s" % (self.tmp_dir, file))
 
-    def make_tar(self, tar_name='config.tar.gz', dir=tmp_dir):
+    def make_tar(self, dir, tar_name):
         with tarfile.open("%s/%s" % (dir, tar_name), "w:gz") as tar:
             tar.add(dir, arcname=os.path.basename(dir))
 
-    def grab(self):
+    def grab(self, tar_name):
         # make temp dir
-        self._make_tmp()
+        _make_working_dir(self.tmp_dir)
         # get conf per service
         for service in self.os_services:
             self.get_conf_files(service)
-        self.make_tar()
+        self.make_tar(self.tmp_dir, tar_name)
 
 class Diff(object):
 
-    def __init__(self, working_dir=None):
-        if working_dir is None:
-            self.wdir = os.curdir
-        else:
-            self.wdir = working_dir
+    def __init__(self, working_dir):
+        self.wdir = working_dir
+        _make_working_dir(self.wdir)
 
     def preprocess(self, file):
         pass
@@ -132,7 +131,46 @@ class Diff(object):
         return [file, hashlib.sha256(open(file, 'rb').read()).digest()]
 
 if __name__ == '__main__':
-    d = Diff()
-    path1 = "testfiles/org"
-    path2 = "testfiles/new"
-    d.diff(path1, path2)
+
+    description = """
+    This tool give you a way to backup your Openstack config and make a diff on it
+
+    example:
+    sudo python diff.py backup -s nova,neutron,glance -w /tmp/os-diff-tools-new/
+    sudo python diff.py diff -o /tmp/os-diff-tools -n /tmp/os-diff-tools-new/ -w /tmp/diff-dir
+    """
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument("action", help="action to do: backup config or make a diff", choices=["backup","diff"])
+    parser.add_argument("-o", "--original", help="path of original files is case of the diff option has been choose", default=None)
+    parser.add_argument("-n", "--new", help="path of new files is case of the diff option has been choose", default=None)
+    parser.add_argument("-s", "--services", help="services to backup, all to backup /etc/, comma delimiter", default=None)
+    parser.add_argument("-w", "--workingdir", help="tmp working where the tool will put files", default="/tmp/os-diff-tools")
+    parser.add_argument("-t", "--tar", help="name of the tar file", default="config.tar.gz")
+    args = parser.parse_args()
+
+    services = args.services
+    tmp_dir = args.workingdir
+    tar_name = args.tar
+
+    if services is not None:
+        services = services.split(",")
+
+    if args.action == "diff" and args.original is None and args.new is None:
+        print "Error, when you select backup action, you need to give an original path and a new path"
+        parser.print_usage()
+        parser.exit()
+
+    if "diff" in args.action:
+        original_path = args.original
+        new_path = args.new
+        diff = Diff(tmp_dir)
+        diff.diff(original_path, new_path)
+        print "Done, the diff between %s and %s has been done under %s" % (original_path, new_path, tmp_dir)
+
+    if "backup" in args.action:
+        if services is None:
+            print "No services provided, exiting"
+            parser.exit()
+        else:
+            g = Grabber(services, tmp_dir)
+            g.grab(tar_name)
