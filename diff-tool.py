@@ -136,8 +136,8 @@ if __name__ == '__main__':
     This tool give you a way to backup your Openstack config and make a diff on it
 
     example:
-    sudo python diff.py backup -s nova,neutron,glance -w /tmp/os-diff-tools-new/
-    sudo python diff.py diff -o /tmp/os-diff-tools -n /tmp/os-diff-tools-new/ -w /tmp/diff-dir
+    sudo python diff-tool.py backup -s nova,neutron,glance -w /tmp/os-diff-tools-new/
+    sudo python diff-tool.py diff -o /tmp/os-diff-tools -n /tmp/os-diff-tools-new/ -w /tmp/diff-dir
     """
     parser = argparse.ArgumentParser(description=description)
     parser.add_argument("action", help="action to do: backup config or make a diff", choices=["backup","diff"])
