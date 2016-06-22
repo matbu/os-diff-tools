@@ -143,7 +143,7 @@ if __name__ == '__main__':
     parser.add_argument("action", help="action to do: backup config or make a diff", choices=["backup","diff"])
     parser.add_argument("-o", "--original", help="path of original files is case of the diff option has been choose", default=None)
     parser.add_argument("-n", "--new", help="path of new files is case of the diff option has been choose", default=None)
-    parser.add_argument("-s", "--services", help="services to backup, all to backup /etc/, comma delimiter", default=None)
+    parser.add_argument("-s", "--services", help="services to backup, comma delimiter", default=None)
     parser.add_argument("-w", "--workingdir", help="tmp working where the tool will put files", default="/tmp/os-diff-tools")
     parser.add_argument("-t", "--tar", help="name of the tar file", default="config.tar.gz")
     args = parser.parse_args()
