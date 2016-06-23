@@ -82,7 +82,10 @@ class Diff(object):
         #sed -e "s/#.*$//" -e "/^$/d" testfiles/nova.conf
         #sed -i "s/#.*$//" testfiles/nova.conf && sed -i "/^$/d" testfiles/nova.conf
 
-    def diff(self, path1, path2):
+    def diff(self, path1, path2, format="path"):
+        if "tar" in format:
+            path1= self.untarconfig(path1, "%s/path1" % self.wdir)
+            path2= self.untarconfig(path2, "%s/path2" % self.wdir)
         # compare dir
         dircmp = filecmp.dircmp(path1, path2)
         # missing files
@@ -108,6 +111,11 @@ class Diff(object):
                         if not line in l1:
                             out.write("+%s" % (line))
                 out.flush()
+
+    def untarconfig(self, file, extract_dir):
+        with tarfile.open(file) as tar:
+            tar.extractall(extract_dir)
+            return "%s/%s" % (extract_dir, tar.getmembers()[0].name)
 
     def dumpfile(self, filename, path, missing=True):
         """ dumpfile with missing statement (+ or -) """
@@ -146,28 +154,31 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--services", help="services to backup, comma delimiter", default=None)
     parser.add_argument("-w", "--workingdir", help="tmp working where the tool will put files", default="/tmp/os-diff-tools")
     parser.add_argument("-t", "--tar", help="name of the tar file", default="config.tar.gz")
+    parser.add_argument("-f", "--format", help="format of the input for diff action, could be <path> or <tar>", default="path")
     args = parser.parse_args()
 
     services = args.services
     tmp_dir = args.workingdir
     tar_name = args.tar
+    original_path = args.original
+    new_path = args.new
+    action = args.action
+    format = args.format
 
     if services is not None:
         services = services.split(",")
 
-    if args.action == "diff" and args.original is None and args.new is None:
+    if action == "diff" and original_path is None and new_path is None:
         print "Error, when you select backup action, you need to give an original path and a new path"
         parser.print_usage()
         parser.exit()
 
-    if "diff" in args.action:
-        original_path = args.original
-        new_path = args.new
+    if "diff" in action:
         diff = Diff(tmp_dir)
-        diff.diff(original_path, new_path)
+        diff.diff(original_path, new_path, format)
         print "Done, the diff between %s and %s has been done under %s" % (original_path, new_path, tmp_dir)
 
-    if "backup" in args.action:
+    if "backup" in action:
         if services is None:
             print "No services provided, exiting"
             parser.exit()
