@@ -15,6 +15,7 @@ import datetime
 import filecmp
 import hashlib
 import argparse
+import subprocess
 
 def _exec_cmd(cmd):
     """ exec command without shell """
