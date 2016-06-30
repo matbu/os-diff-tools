@@ -16,6 +16,7 @@ import filecmp
 import hashlib
 import argparse
 import subprocess
+import datetime
 
 def _exec_cmd(cmd):
     """ exec command without shell """
@@ -33,16 +34,46 @@ def _make_working_dir(working_dir):
     if not os.path.exists(working_dir):
         os.mkdir(working_dir)
 
-class Logger(object):
-    """ Std logger"""
+class Report(object):
+    """ Report class """
 
-    _log_level = 'DEBUG'
+    _header = """
+    Start diff at : %s\n
+
+    This file show the diff report between:\n
+    %s \n
+    and: \n
+    %s \n
+    Report:\n
+    """
+
+    _report_tpl = """
+    Diff report:
+        Total of diffs found: %s
+
+    Diff found in:
+    %s
+
+    Details:
+        File: %s
+            %s
+"""
 
     def __init__(self, log_dir):
-        self.log = open("%s/diff.log" % (log_dir), 'a+')
+        self.log_dir = log_dir
+        self.log = open("%s/log.log" % (log_dir), 'a+')
 
-    def log(self, *args):
-        line = str(datetime.datetime.now())
+    def init_report(self, path1, path2):
+        # init report
+        report = open("%s/report.log" % (self.log_dir), 'a+')
+        report.write(self._header % (str(datetime.datetime.now()), path1, path2))
+        report.flush()
+
+    def generate_report(self):
+        pass
+
+    def write(self, *args):
+        line = ''
         for arg in args:
             line += ' ' + str(arg)
         self.log.write("%s\n" % line)
@@ -77,6 +108,7 @@ class Diff(object):
     def __init__(self, working_dir):
         self.wdir = working_dir
         _make_working_dir(self.wdir)
+        self.report = Report(self.wdir)
 
     def preprocess(self, file):
         pass
@@ -84,9 +116,10 @@ class Diff(object):
         #sed -i "s/#.*$//" testfiles/nova.conf && sed -i "/^$/d" testfiles/nova.conf
 
     def diff(self, path1, path2, format="path"):
+        self.report.init_report(path1, path2)
         if "tar" in format:
-            path1= self.untarconfig(path1, "%s/path1" % self.wdir)
-            path2= self.untarconfig(path2, "%s/path2" % self.wdir)
+            path1 = self.untarconfig(path1, "%s/path1" % self.wdir)
+            path2 = self.untarconfig(path2, "%s/path2" % self.wdir)
         # compare dir
         dircmp = filecmp.dircmp(path1, path2)
         # missing files
@@ -100,6 +133,7 @@ class Diff(object):
         files = dircmp.same_files
         for f in files:
             if not self.md5cmp("%s/%s" % (path1, f),"%s/%s" % (path2, f)):
+                self.report.write("\n\n%s" % (f))
                 out = open("%s/%s.diff" % (self.wdir, f), 'w')
                 with open("%s/%s" % (path1, f), 'rb') as f1, open("%s/%s" % (path2, f), 'rb') as f2:
                     # @TODO remove comment
@@ -107,10 +141,14 @@ class Diff(object):
                     l2 = f2.readlines()
                     for line in l1:
                         if not line in l2:
-                            out.write("-%s" % (line))
+                            l = "-%s" % (line)
+                            out.write(l)
+                            self.report.write(l)
                     for line in l2:
                         if not line in l1:
-                            out.write("+%s" % (line))
+                            l = "+%s" % (line)
+                            out.write(l)
+                            self.report.write(l)
                 out.flush()
 
     def untarconfig(self, file, extract_dir):
@@ -122,11 +160,14 @@ class Diff(object):
         """ dumpfile with missing statement (+ or -) """
         with open("%s/%s" % (path, filename), 'rb') as stream:
             f = open("%s/%s.diff" % (self.wdir, filename), 'w')
+            self.report.write("\n\n%s/%s" % (path, filename))
             for l in stream.readlines():
                 if missing:
-                    f.write("-%s" % l)
+                    line = "-%s" % l
                 else:
-                    f.write("+%s" % l)
+                    line = "+%s" % l
+                self.report.write(line)
+                f.write(line)
                 f.flush()
 
     def md5cmp(self, fIn, fOut):
