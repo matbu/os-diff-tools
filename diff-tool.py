@@ -37,46 +37,63 @@ def _make_working_dir(working_dir):
 class Report(object):
     """ Report class """
 
-    _header = """
-    Start diff at : %s\n
+    _header = """Start diff at : %s
 
-    This file show the diff report between:\n
-    %s \n
-    and: \n
-    %s \n
-    Report:\n
+This file show the diff report between:
+%s
+and:
+%s
+
+Report:
     """
 
     _report_tpl = """
-    Diff report:
-        Total of diffs found: %s
+Diff report:
+    Total of diffs found: %s
 
-    Diff found in:
-    %s
+Diff found in:
+%s
 
-    Details:
-        File: %s
-            %s
+Total of missing files:
+%s
+
+Total of new files:
+%s
+
+Total of number of diff lines:
+%s
+
+Details:
 """
+    report = None
 
     def __init__(self, log_dir):
         self.log_dir = log_dir
-        self.log = open("%s/log.log" % (log_dir), 'a+')
+        self.log = open("%s/log" % (self.log_dir), 'w')
 
     def init_report(self, path1, path2):
         # init report
-        report = open("%s/report.log" % (self.log_dir), 'a+')
-        report.write(self._header % (str(datetime.datetime.now()), path1, path2))
-        report.flush()
+        self.report = open("%s/report.log" % (self.log_dir), 'w')
+        self.report.write(self._header % (str(datetime.datetime.now()), path1, path2))
+        self.report.flush()
 
-    def generate_report(self):
-        pass
+    def generate_report(self, params):
+        if self.report is None:
+            raise("You must init the report before")
+        self.report.write(self._report_tpl % (params['filediff'],
+                                            params['filename'],
+                                            params['missing'],
+                                            params['new'],
+                                            params['linediff']))
+        log = open("%s/log" % (self.log_dir), 'rb')
+        self.report.write(log.read())
+        self.report.flush()
 
     def write(self, *args):
         line = ''
         for arg in args:
             line += ' ' + str(arg)
-        self.log.write("%s\n" % line)
+        self.log.write("%s" % line)
         self.log.flush()
 
 class Grabber(object):
@@ -104,6 +121,8 @@ class Grabber(object):
         self.make_tar(self.tmp_dir, tar_name)
 
 class Diff(object):
+
+    found = {'missing': 0, 'new': 0, 'filediff': 0, 'linediff': 0, 'filename': ''}
 
     def __init__(self, working_dir):
         self.wdir = working_dir
@@ -134,22 +153,29 @@ class Diff(object):
         for f in files:
             if not self.md5cmp("%s/%s" % (path1, f),"%s/%s" % (path2, f)):
                 self.report.write("\n\n%s" % (f))
+                self.found['filediff'] += 1
+                self.found['filename'] += '  - %s\n' % f
                 out = open("%s/%s.diff" % (self.wdir, f), 'w')
                 with open("%s/%s" % (path1, f), 'rb') as f1, open("%s/%s" % (path2, f), 'rb') as f2:
                     # @TODO remove comment
                     l1 = f1.readlines()
                     l2 = f2.readlines()
+                    line_count = 0
                     for line in l1:
                         if not line in l2:
                             l = "-%s" % (line)
                             out.write(l)
                             self.report.write(l)
+                            line_count += 1
                     for line in l2:
                         if not line in l1:
                             l = "+%s" % (line)
                             out.write(l)
                             self.report.write(l)
+                            line_count += 1
+                    self.found['linediff'] += 1
                 out.flush()
+        self.report.generate_report(self.found)
 
     def untarconfig(self, file, extract_dir):
         with tarfile.open(file) as tar:
@@ -161,6 +187,12 @@ class Diff(object):
         with open("%s/%s" % (path, filename), 'rb') as stream:
             f = open("%s/%s.diff" % (self.wdir, filename), 'w')
             self.report.write("\n\n%s/%s" % (path, filename))
+#            self.found['filename'].append(filename)
+            self.found['filename'] += '  - %s\n' % filename
+            if missing:
+                self.found['missing'] += 1
+            else:
+                self.found['new'] += 1
             for l in stream.readlines():
                 if missing:
                     line = "-%s" % l
