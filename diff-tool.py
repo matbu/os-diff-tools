@@ -37,33 +37,15 @@ def _make_working_dir(working_dir):
 class Report(object):
     """ Report class """
 
-    _header = """Start diff at : %s
-
-This file show the diff report between:
-%s
-and:
-%s
-
-Report:
+    _header = """
+Start diff at : %s\n\nThis file show the diff report between:\n%s\nand:\n%s\n
+\nReport:\n
     """
 
     _report_tpl = """
-Diff report:
-    Total of diffs found: %s
-
-Diff found in:
-%s
-
-Total of missing files:
-%s
-
-Total of new files:
-%s
-
-Total of number of diff lines:
-%s
-
-Details:
+Diff report:\n    Total of diffs found: %s\n\nDiff found in:\n%s\n\n
+Total of missing files:\n%s\n\nTotal of new files:\n%s\n\n
+Total of number of diff lines:\n%s\n\nDetails:\n
 """
     report = None
 
@@ -123,6 +105,10 @@ class Grabber(object):
 class Diff(object):
 
     found = {'missing': 0, 'new': 0, 'filediff': 0, 'linediff': 0, 'filename': ''}
+    diff_files = []
+    missing_files = []
+    new_files = []
+    exclude = ['.pyo', '.pyc']
 
     def __init__(self, working_dir):
         self.wdir = working_dir
@@ -134,6 +120,21 @@ class Diff(object):
         #sed -e "s/#.*$//" -e "/^$/d" testfiles/nova.conf
         #sed -i "s/#.*$//" testfiles/nova.conf && sed -i "/^$/d" testfiles/nova.conf
 
+    def get_diff_files(self, dircmp):
+        for f in dircmp.diff_files:
+            if not any(regex in f for regex in self.exclude):
+                self.diff_files.append(["%s" % dircmp.left, "%s" % dircmp.right, "%s" % f])
+                for missing in dircmp.left_only:
+                    self.missing_files.append("%s/%s" % (dircmp.left, missing))
+                    if not os.path.isdir("%s/%s" % (dircmp.left, missing)):
+                        self.dumpfile(missing, dircmp.left)
+                for new in dircmp.right_only:
+                    self.new_files.append("%s/%s" % (dircmp.right, new))
+                    if not os.path.isdir("%s/%s" % (dircmp.right, new)):
+                        self.dumpfile(new, dircmp.right, missing=False)
+        for subdir in dircmp.subdirs.values():
+            self.get_diff_files(subdir)
+
     def diff(self, path1, path2, format="path"):
         self.report.init_report(path1, path2)
         if "tar" in format:
@@ -141,22 +142,15 @@ class Diff(object):
             path2 = self.untarconfig(path2, "%s/path2" % self.wdir)
         # compare dir
         dircmp = filecmp.dircmp(path1, path2)
-        # missing files
-        missing_files = dircmp.left_only
-        for missing in missing_files:
-            self.dumpfile(missing, path1)
-        # new files
-        new_files = dircmp.right_only
-        for new in new_files:
-            self.dumpfile(new, path2, missing=False)
-        files = dircmp.same_files
-        for f in files:
-            if not self.md5cmp("%s/%s" % (path1, f),"%s/%s" % (path2, f)):
-                self.report.write("\n\n%s" % (f))
+        self.get_diff_files(dircmp)
+
+        for f in self.diff_files:
+            if not self.md5cmp("%s/%s" % (f[0], f[2]),"%s/%s" % (f[1], f[2])):
+                self.report.write("\n\n%s" % (f[2]))
                 self.found['filediff'] += 1
-                self.found['filename'] += '  - %s\n' % f
-                out = open("%s/%s.diff" % (self.wdir, f), 'w')
-                with open("%s/%s" % (path1, f), 'rb') as f1, open("%s/%s" % (path2, f), 'rb') as f2:
+                self.found['filename'] += '  - %s\n' % f[2]
+                out = open("%s/%s.diff" % (self.wdir, f[2]), 'w')
+                with open("%s/%s" % (f[0], f[2]), 'rb') as f1, open("%s/%s" % (f[1], f[2]), 'rb') as f2:
                     # @TODO remove comment
                     l1 = f1.readlines()
                     l2 = f2.readlines()
